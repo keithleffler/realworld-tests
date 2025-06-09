@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npx nx run-many --target=test --all
+      - name: Export Playwright results to JUnit format
+        run: npx playwright test --reporter=junit
+      - name: Upload results to Xray (Cloud)
+        env:
+          XRAY_CLIENT_ID: ${{ secrets.XRAY_CLIENT_ID }}
+          XRAY_CLIENT_SECRET: ${{ secrets.XRAY_CLIENT_SECRET }}
+        run: |
+          curl -H "Content-Type: application/json" \
+            -X POST https://xray.cloud.getxray.app/api/v2/authenticate \
+            -d '{"client_id": "$XRAY_CLIENT_ID", "client_secret": "$XRAY_CLIENT_SECRET"}' \
+            -o token.txt
+          TOKEN=$(cat token.txt | tr -d '"')
+          curl -H "Content-Type: text/xml" \
+            -H "Authorization: Bearer $TOKEN" \
+            --data @playwright-report/results.xml \
+            https://xray.cloud.getxray.app/api/v2/import/execution/junit
